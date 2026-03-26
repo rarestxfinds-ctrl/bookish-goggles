@@ -3,10 +3,9 @@ import { Layout } from "@/Top/Component/Layout/Layout";
 import { SurahNavbar } from "@/Top/Component/Surah/Navbar";
 import { SurahNavigation } from "@/Top/Component/Surah/Navigation";
 import { AudioPlayer } from "@/Top/Component/Audio-Player";
-import { Action } from "@/Top/Component/Quran/Action";
-import { Bismillah } from "@/Top/Component/Quran/Bismillah";
-import { PageView } from "@/Top/Component/Quran/Layout/Page-View";
-import { AyahView } from "@/Top/Component/Quran/Layout/Ayah-View";
+import { SurahHeader } from "@/Top/Component/Quran/Surah/Header";
+import { PageView } from "@/Top/Component/Quran/Layout/Safhah/Index";
+import { AyahView } from "@/Top/Component/Quran/Layout/Ayah/Index";
 import { NotesDialog } from "@/Top/Component/Dialog/Notes-Dialog";
 import { ShareDialog } from "@/Top/Component/Dialog/Share-Dialog";
 import { SurahInfoDialog } from "@/Top/Component/Dialog/Surah-Info-Dialog";
@@ -125,6 +124,11 @@ const SurahIndex = () => {
     }
   }, [surahId, targetVerse, verses, isLoading]);
 
+  const wordCount = useMemo(() => {
+    if (!verses) return 0;
+    return verses.reduce((sum, verse) => sum + verse.words.length, 0);
+  }, [verses]);
+
   // Loading state
   if (isLoading) {
     return (
@@ -223,13 +227,12 @@ const SurahIndex = () => {
       />
 
       <div ref={containerRef} className="container pt-28 max-w-4xl mx-auto pb-24">
-        {surahId !== 1 && surahId !== 9 && showArabicText && (
-          <Bismillah fontClass={getFontClass()} />
-        )}
-
-        <Action
-          surahId={surahId}
-          surahName={surah.englishName}
+        <SurahHeader
+          surah={surah}
+          wordCount={wordCount}
+          showBismillah={surahId !== 1 && surahId !== 9 && showArabicText}
+          fontClass={getFontClass()}
+          arabicFontSize={arabicFontSize}
           onInfoClick={() => setSurahInfoDialog(true)}
           onAudioClick={() => setShowAudioPlayer(true)}
         />
@@ -237,7 +240,7 @@ const SurahIndex = () => {
         {isPageLayout ? (
           <PageView
             surah={surah}
-            assembledSurah={surahData}  // FIXED: Pass the entire assembledSurah object
+            assembledSurah={surahData}
             showArabicText={showArabicText}
             hoverTranslation={hoverTranslation}
             fontClass={getFontClass()}

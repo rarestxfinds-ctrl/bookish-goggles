@@ -107,11 +107,11 @@ export function SettingsSidebar({ compact = false }: SettingsSidebarProps) {
   }
 
   return (
-    <div className="fixed inset-0 z-40 bg-background pt-[72px]">
+    <div className="fixed inset-0 z-40 bg-background pt-[72px] pb-6">
       <div className="h-full flex">
-        <div className="shrink-0 w-52 h-full flex flex-col py-3 pl-3">
-          <nav className="glass-navbar flex-1 rounded-md px-2 py-3 flex flex-col">
-            <div className="space-y-0.5 flex-1">
+        <div className="shrink-0 w-52 h-full flex flex-col pt-6 pl-6 pb-6">
+          <div className="glass-sidebar flex-1 p-2 flex flex-col">
+            <div className="space-y-1 flex-1 py-8">
               {SETTINGS_CATEGORIES.map((cat) => {
                 const Icon = CATEGORY_ICONS[cat.icon as keyof typeof CATEGORY_ICONS];
                 return (
@@ -119,7 +119,7 @@ export function SettingsSidebar({ compact = false }: SettingsSidebarProps) {
                     key={cat.id}
                     onClick={() => setActiveCategory(cat.id)}
                     className={cn(
-                      "w-full flex items-center gap-2.5 rounded-md px-3 py-2.5 text-left transition-all",
+                      "w-full flex items-center gap-2.5 rounded-full px-3 py-2.5 text-left transition-all cursor-pointer",
                       activeCategory === cat.id
                         ? "bg-primary/15 text-primary"
                         : "hover:bg-muted/50 text-foreground"
@@ -131,7 +131,7 @@ export function SettingsSidebar({ compact = false }: SettingsSidebarProps) {
                 );
               })}
             </div>
-          </nav>
+          </div>
         </div>
 
         <ScrollArea className="flex-1 h-full">

@@ -3,10 +3,9 @@ import { Layout } from "@/Top/Component/Layout/Layout";
 import { SurahNavbar } from "@/Top/Component/Surah/Navbar";
 import { SurahNavigation } from "@/Top/Component/Surah/Navigation";
 import { AudioPlayer } from "@/Top/Component/Audio-Player";
-import { Action } from "@/Top/Component/Quran/Action";
-import { Bismillah } from "@/Top/Component/Quran/Bismillah";
-import { VerseCard } from "@/Top/Component/Quran/Layout/Verse-Card";
-import { WordByWord } from "@/Top/Component/Word-By-Word";
+import { SurahHeader } from "@/Top/Component/Quran/Surah/Header";
+import { VerseCard } from "@/Top/Component/Quran/Layout/Ayah/Main";
+import { PageLines } from "@/Top/Component/Quran/Layout/Safhah/Main";
 import { NotesDialog } from "@/Top/Component/Dialog/Notes-Dialog";
 import { ShareDialog } from "@/Top/Component/Dialog/Share-Dialog";
 import { SurahInfoDialog } from "@/Top/Component/Dialog/Surah-Info-Dialog";
@@ -21,7 +20,6 @@ import { Skeleton } from "@/Top/Component/UI/skeleton";
 import { AlertCircle } from "lucide-react";
 import { useEffect, useState, useRef, useMemo } from "react";
 import { Alert, AlertDescription } from "@/Top/Component/UI/alert";
-import { cn } from "@/Middle/Library/utils";
 
 const AyahIndex = () => {
   const { id, verseId } = useParams<{ id: string; verseId: string }>();
@@ -31,11 +29,11 @@ const AyahIndex = () => {
 
   const {
     layout, fontSize, translationFontSize, quranFont,
-    showArabicText, verseTranslation, hoverTranslation,
+    showArabicText, verseTranslation, hoverTranslation, inlineTranslation,
   } = useApp();
 
-  const { stop: stopAudio } = useAudio();
-  const { data: surahData, isLoading, error } = useQuranData(surahId);
+  const { stop: stopAudio, isPlaying } = useAudio();
+  const { data: surahData, isLoading, error, refetch } = useQuranData(surahId);
   const verses = surahData?.verses;
   const verse  = verses?.find((v) => v.verseNumber === verseNum);
 
@@ -72,6 +70,22 @@ const AyahIndex = () => {
   const arabicFontSize         = `${(1.5 * fontSize) / 5}rem`;
   const translationFontSizeValue = `${(1 * translationFontSize) / 3}rem`;
 
+  // For page layout, we need to build a single line of resolved words for this verse
+  const pageLayoutWords = useMemo(() => {
+    if (!isPageLayout || !verse) return null;
+    // Each word in the verse becomes a resolved word object
+    const words = verse.words.map((glyph, idx) => ({
+      glyph,
+      verse,
+      wordIndex: idx,
+      isVerseEnd: idx === verse.words.length - 1,
+      isVerseNumber: false,
+      verseNumber: undefined,
+    }));
+    // We create a single line (array of words) and wrap in an array of lines
+    return [words];
+  }, [isPageLayout, verse]);
+
   useEffect(() => {
     startSession();
     return () => {
@@ -88,23 +102,6 @@ const AyahIndex = () => {
       if (el) setTimeout(() => el.scrollIntoView({ behavior: "smooth", block: "center" }), 300);
     }
   }, [verse, verseNum]);
-
-  // ── Page layout: find which page contains this verse ──
-  const targetPage = useMemo(() => {
-    if (!verses || !isPageLayout) return null;
-    const startPage    = surah.pages[0];
-    const endPage      = surah.pages[1];
-    const totalPages   = endPage - startPage + 1;
-    const versesPerPage = Math.ceil(verses.length / totalPages);
-
-    for (let i = 0; i < totalPages; i++) {
-      const pageVerses = verses.slice(i * versesPerPage, (i + 1) * versesPerPage);
-      if (pageVerses.some((v) => v.verseNumber === verseNum)) {
-        return { pageNumber: startPage + i, verses: pageVerses };
-      }
-    }
-    return null;
-  }, [verses, surah, verseNum, isPageLayout]);
 
   if (isLoading) {
     return (
@@ -131,12 +128,17 @@ const AyahIndex = () => {
             <AlertDescription>Failed to load verse data. Please try again later.</AlertDescription>
           </Alert>
           <div className="text-center">
-            <Button onClick={() => window.location.reload()}>Retry</Button>
+            <Button onClick={() => refetch()}>Retry</Button>
           </div>
         </div>
       </Layout>
     );
   }
+
+  const showBismillah = surahId !== 1 && surahId !== 9 && showArabicText;
+
+  // Compute word count for the header (optional)
+  const wordCount = verse.words.length;
 
   return (
     <Layout hideFooter>
@@ -149,80 +151,32 @@ const AyahIndex = () => {
       />
 
       <div className="container pt-28 max-w-4xl mx-auto pb-24">
-        {surahId !== 1 && surahId !== 9 && showArabicText && (
-          <Bismillah fontClass={getFontClass()} />
-        )}
-
-        <Action
-          surahId={surahId}
+        <SurahHeader
+          surah={surah}
+          wordCount={wordCount}
+          showBismillah={showBismillah}
+          fontClass={getFontClass()}
+          arabicFontSize={arabicFontSize}
           onInfoClick={() => setSurahInfoDialog(true)}
+          onAudioClick={() => setShowAudioPlayer(true)}
         />
 
-        {/* ── Page Layout ── */}
-        {isPageLayout && targetPage && (
-          <div className="relative glass-container !rounded-xl overflow-hidden !block">
-            <div className="p-6 sm:p-8 relative z-10">
-              {showArabicText && (
-                <div
-                  className={`${getFontClass()} leading-[2.8] text-justify`}
-                  dir="rtl"
-                  style={{ fontSize: arabicFontSize, textAlignLast: "center" }}
-                >
-                  {targetPage.verses.map((v) => (
-                    <span
-                      key={v.verseNumber}
-                      ref={(el) => { if (el) verseRefs.current.set(v.verseNumber, el as unknown as HTMLDivElement); }}
-                      className={cn(
-                        "inline transition-all duration-300",
-                        v.verseNumber === verseNum
-                          ? "text-foreground"
-                          : "text-foreground/30"
-                      )}
-                    >
-                      <span className="inline cursor-default">
-                        {v.arabic}{" "}
-                      </span>
-                    </span>
-                  ))}
-                </div>
-              )}
-
-              {showArabicText && hoverTranslation && (
-                <div className="mt-6 border-t border-border pt-4">
-                  <div className="mb-4">
-                    <span className="text-xs text-muted-foreground mb-1 block">
-                      {surah.id}:{verse.verseNumber}
-                    </span>
-                    <WordByWord
-                      words={verse.words}
-                      wbwTranslation={verse.wbwTranslation}
-                      verseNumber={verse.verseNumber}
-                      surahId={surahId}
-                    />
-                  </div>
-                </div>
-              )}
-
-              {!showArabicText && (
-                <div className="flex gap-3">
-                  <span className="text-sm font-medium text-muted-foreground shrink-0 pt-1">
-                    {verse.verseNumber}.
-                  </span>
-                  <p className="text-foreground leading-relaxed" style={{ fontSize: translationFontSizeValue }}>
-                    {verse.translation}
-                  </p>
-                </div>
-              )}
-            </div>
-
-            <div className="flex items-center justify-center px-6 py-2 relative z-10">
-              <span className="text-xs text-muted-foreground">{targetPage.pageNumber}</span>
+        {isPageLayout ? (
+          <div className="glass-container !rounded-xl overflow-hidden !block">
+            <div className="pt-4 px-6 sm:px-8 pb-4">
+              <PageLines
+                resolvedLines={pageLayoutWords!}
+                fontClass={getFontClass()}
+                arabicFontSize={arabicFontSize}
+                wordSpacing="1.8px"
+                surahId={surahId}
+                verseRefs={verseRefs}
+                hoveredVerse={null}
+                setHoveredVerse={() => {}}
+              />
             </div>
           </div>
-        )}
-
-        {/* ── Ayah Layout ── */}
-        {!isPageLayout && (
+        ) : (
           <VerseCard
             verse={verse}
             surah={surah}
@@ -236,18 +190,24 @@ const AyahIndex = () => {
           />
         )}
 
-        <SurahNavigation currentSurahId={surahId} />
+        <SurahNavigation
+          currentSurahId={surahId}
+          totalVerses={surah.numberOfAyahs}
+        />
       </div>
 
       <AudioPlayer
         isVisible={showAudioPlayer}
         onClose={() => { stopAudio(); setShowAudioPlayer(false); }}
+        surahId={surahId}
+        surahName={surah.englishName}
       />
 
       <NotesDialog
         open={notesDialog.open}
         onOpenChange={(open) => setNotesDialog({ ...notesDialog, open })}
         surahId={surahId}
+        surahName={surah.englishName}
         ayahId={notesDialog.ayahId}
         verseText={notesDialog.verseText}
       />
@@ -255,6 +215,7 @@ const AyahIndex = () => {
         open={shareDialog.open}
         onOpenChange={(open) => setShareDialog({ ...shareDialog, open })}
         surahId={surahId}
+        surahName={surah.englishName}
         ayahId={shareDialog.ayahId}
         verseText={shareDialog.verseText}
         translation={shareDialog.translation}
@@ -263,6 +224,7 @@ const AyahIndex = () => {
         open={surahInfoDialog}
         onOpenChange={setSurahInfoDialog}
         surahId={surahId}
+        surah={surah}
       />
     </Layout>
   );

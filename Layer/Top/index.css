@@ -304,11 +304,11 @@
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
   }
-
   /* Tajweed color coding */
 .tajweed-text tajweed { display: inline; }
 
 /* Silent / weak letters */
+.dark .tajweed-text {color:#000EBC; }
 .tajweed-text tajweed.ham_wasl       { color: #AAAAAA; } /* Silent Hamza */
 .tajweed-text tajweed.laam_shamsiyah { color: #AAAAAA; } /* Silent Laam */
 
@@ -334,8 +334,32 @@
 .tajweed-text tajweed.idghaam_mutajanisayn  { color: #A1A1A1; }
 .tajweed-text tajweed.idghaam_mutaqaribayn  { color: #A1A1A1; }
 
+.verse-highlight {
+  color: var(--primary) !important;
+  filter: brightness(5);
+  transition: all 0.2s ease;
+}
+
+/* Dark mode verse highlight */
+.dark .verse-highlight {
+  color: var(--primary) !important;
+  filter: brightness(5);
+}
 /* Tafkhim (heavy/emphatic) */
 .tajweed-text tajweed.tafkhim { color: #BB4F00; }
+
+/* Verse highlight - when hovering over verse marker or verse end */
+.tajweed-text .verse-highlight {
+  color: var(--primary) !important;
+  filter: brightness(1.1);
+  transition: all 0.2s ease;
+}
+
+/* Dark mode verse highlight */
+.dark .tajweed-text .verse-highlight {
+  color: var(--primary) !important;
+  filter: brightness(1.2);
+}
 
 /* Dark mode */
 .dark .tajweed-text tajweed.ham_wasl         { color: #888888; }
@@ -393,6 +417,8 @@
     overflow: hidden;
     border-radius: 30px;
     box-shadow: var(--glass-shadow-inner);
+      pointer-events: none; /* Important: allows clicks to pass through */
+
   }
 
   .glass-container::after {
@@ -548,96 +574,109 @@
     isolation: isolate;
     pointer-events: none;
   }
+/* Glass Navbar - Full width floating without outline */
+.glass-navbar {
+  position: relative;
+  display: flex;
+  align-items: center;
+  border-radius: 9999px;
+  padding: 8px 12px;
+  background: transparent;
+  width: 100%;
+  max-width: calc(100vw - 2rem);
+}
 
-  /* Glass Navbar - Full width floating without outline */
+@media (min-width: 640px) {
   .glass-navbar {
-    position: relative;
-    display: flex;
-    align-items: center;
-    border-radius: 9999px;
-    padding: 8px 12px;
-    background: transparent;
-    width: 100%;
-    max-width: calc(100vw - 2rem);
+    padding: 8px 16px;
+    max-width: calc(100vw - 3rem);
   }
+}
 
-  @media (min-width: 640px) {
-    .glass-navbar {
-      padding: 8px 16px;
-      max-width: calc(100vw - 3rem);
-    }
+@media (min-width: 768px) {
+  .glass-navbar {
+    padding: 8px 20px;
+    max-width: calc(100vw - 4rem);
   }
+}
 
-  @media (min-width: 768px) {
-    .glass-navbar {
-      padding: 8px 20px;
-      max-width: calc(100vw - 4rem);
-    }
+@media (min-width: 1024px) {
+  .glass-navbar {
+    max-width: 1000px;
   }
+}
 
-  @media (min-width: 1024px) {
-    .glass-navbar {
-      max-width: 1000px;
-    }
+@media (min-width: 1280px) {
+  .glass-navbar {
+    max-width: 1200px;
   }
+}
 
-  @media (min-width: 1280px) {
-    .glass-navbar {
-      max-width: 1200px;
-    }
-  }
+.glass-navbar::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  border-radius: 9999px;
+  box-shadow: var(--glass-shadow-inner);
+  background-color: var(--glass-bg);
+}
 
-  .glass-navbar::before {
-    content: '';
-    position: absolute;
-    inset: 0;
-    z-index: 0;
-    overflow: hidden;
-    border-radius: 9999px;
-    box-shadow: var(--glass-shadow-inner);
-    background-color: var(--glass-bg);
-  }
+.glass-navbar::after {
+  content: '';
+  position: absolute;
+  z-index: -1;
+  inset: 0;
+  border-radius: 9999px;
+  backdrop-filter: blur(24px) saturate(180%);
+  -webkit-backdrop-filter: blur(24px) saturate(180%);
+  overflow: hidden;
+  isolation: isolate;
+}
 
-  .glass-navbar::after {
-    content: '';
-    position: absolute;
-    z-index: -1;
-    inset: 0;
-    border-radius: 9999px;
-    backdrop-filter: blur(24px) saturate(180%);
-    -webkit-backdrop-filter: blur(24px) saturate(180%);
-    overflow: hidden;
-    isolation: isolate;
-  }
+/* Glass Sidebar - Completely rounded matching navbar style */
+.glass-sidebar {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  background: transparent;
+  width: 100%;
+  border-radius: 9999px;
+  padding: 12px 8px;
+}
 
-  /* Glass Sidebar - with backdrop blur for readability */
-  .glass-sidebar {
-    position: relative;
-    background: hsl(var(--background) / 0.85);
-    backdrop-filter: blur(24px) saturate(180%);
-    -webkit-backdrop-filter: blur(24px) saturate(180%);
-  }
+.glass-sidebar::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  border-radius: 9999px;
+  box-shadow: var(--glass-shadow-inner);
+  background-color: var(--glass-bg);
+  pointer-events: none;
+}
 
-  .glass-sidebar::before {
-    content: '';
-    position: absolute;
-    inset: 0;
-    z-index: 0;
-    overflow: hidden;
-    box-shadow: var(--glass-shadow-inner);
-    pointer-events: none;
-  }
+.glass-sidebar::after {
+  content: '';
+  position: absolute;
+  z-index: -1;
+  inset: 0;
+  border-radius: 9999px;
+  backdrop-filter: blur(24px) saturate(180%);
+  -webkit-backdrop-filter: blur(24px) saturate(180%);
+  overflow: hidden;
+  isolation: isolate;
+  pointer-events: none;
+}
 
-  .glass-sidebar::after {
-    content: '';
-    position: absolute;
-    z-index: -1;
-    inset: 0;
-    background: hsl(var(--background) / 0.7);
-    overflow: hidden;
-    isolation: isolate;
-    pointer-events: none;
-  }
+/* Ensure content inside glass-sidebar is clickable */
+.glass-sidebar > * {
+  position: relative;
+  z-index: 1;
+  pointer-events: auto;
+}
 
   /* Glass Input/Search */
   .glass-input {

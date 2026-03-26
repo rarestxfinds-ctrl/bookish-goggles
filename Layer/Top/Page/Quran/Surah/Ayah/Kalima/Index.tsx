@@ -3,8 +3,8 @@ import { Layout } from "@/Top/Component/Layout/Layout";
 import { SurahNavbar } from "@/Top/Component/Surah/Navbar";
 import { SurahNavigation } from "@/Top/Component/Surah/Navigation";
 import { AudioPlayer } from "@/Top/Component/Audio-Player";
-import { Action } from "@/Top/Component/Quran/Action";
-import { Bismillah } from "@/Top/Component/Quran/Bismillah";
+import { SurahHeader } from "@/Top/Component/Quran/Surah/Header";
+import { useAudioPlayback } from "@/Top/Component/Quran/Layout/Safhah/Utility";
 import { NotesDialog } from "@/Top/Component/Dialog/Notes-Dialog";
 import { ShareDialog } from "@/Top/Component/Dialog/Share-Dialog";
 import { SurahInfoDialog } from "@/Top/Component/Dialog/Surah-Info-Dialog";
@@ -16,50 +16,47 @@ import { useReadingSession } from "@/Middle/Hook/Use-Reading-Session";
 import { useQuranGoals } from "@/Middle/Hook/Use-Quran-Goals";
 import { Button } from "@/Top/Component/UI/button";
 import { Skeleton } from "@/Top/Component/UI/skeleton";
-import { AlertCircle } from "lucide-react";
+import { AlertCircle, Info, Play, Pause, Loader2, ChevronLeft, ChevronRight } from "lucide-react";
 import { useEffect, useState, useRef, useMemo } from "react";
 import { Alert, AlertDescription } from "@/Top/Component/UI/alert";
 import { cn } from "@/Middle/Library/utils";
-import {
-  Tooltip, TooltipContent, TooltipProvider, TooltipTrigger,
-} from "@/Top/Component/UI/tooltip";
-import { getWordAudioPath } from "@/Bottom/API/Quran";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/Top/Component/UI/tooltip";
+import { useTranslation } from "@/Middle/Hook/Use-Translation";
 
 const KalimaIndex = () => {
   const { id, verseId, kalimaId } = useParams<{ id: string; verseId: string; kalimaId: string }>();
-  const surahId   = parseInt(id || "1");
-  const verseNum  = parseInt(verseId || "1");
-  const kalimaNum = parseInt(kalimaId || "1"); // 1-based
-
+  const surahId = parseInt(id || "1");
+  const verseNum = parseInt(verseId || "1");
+  const wordIndex = parseInt(kalimaId || "1") - 1; // 0‑based
   const surah = surahList.find((s) => s.id === surahId) || surahList[0];
 
+  const { t } = useTranslation();
   const {
-    layout, fontSize, translationFontSize, quranFont,
-    showArabicText, verseTranslation, hoverTranslation, hoverRecitation,
+    fontSize, quranFont, showArabicText,
   } = useApp();
 
-  const { stop: stopAudio } = useAudio();
-  const { data: surahData, isLoading, error } = useQuranData(surahId);
+  const { stop: stopAudio, isPlaying: isAudioPlaying, isLoading: isAudioLoading, currentSurah, playFullSurah, togglePlayPause } = useAudio();
+  const { data: surahData, isLoading, error, refetch } = useQuranData(surahId);
   const verses = surahData?.verses;
-  const verse  = verses?.find((v) => v.verseNumber === verseNum);
-  const word   = verse?.words?.[kalimaNum - 1];
-  const wbwTranslation = verse?.wbwTranslation?.[kalimaNum - 1];
+  const verse = verses?.find((v) => v.verseNumber === verseNum);
+  const word = verse?.words[wordIndex];
 
   const { startSession, stopSession, saveMinutesToGoal } = useReadingSession();
   const { activeGoal } = useQuranGoals();
 
   const [showAudioPlayer, setShowAudioPlayer] = useState(false);
-  const [surahInfoDialog, setSurahInfoDialog]  = useState(false);
-  const [isPlaying, setIsPlaying]              = useState(false);
+  const [surahInfoDialog, setSurahInfoDialog] = useState(false);
   const [notesDialog, setNotesDialog] = useState<{ open: boolean; ayahId?: number; verseText?: string }>({ open: false });
   const [shareDialog, setShareDialog] = useState<{ open: boolean; ayahId?: number; verseText?: string; translation?: string }>({ open: false });
 
+  const wordRef = useRef<HTMLSpanElement>(null);
   const verseRefs = useRef<Map<number, HTMLDivElement>>(new Map());
-  const isPageLayout = layout === "page";
+
+  const { playWordAudio, isPlaying: isWordPlaying } = useAudioPlayback(surahId);
 
   const { currentJuz, currentHizb, currentPage } = useMemo(() => {
-    const juzInfo    = juzData.find(juz => juz.surahs.some(s => s.id === surahId));
-    const juzNumber  = juzInfo?.juzNumber || 1;
+    const juzInfo = juzData.find(juz => juz.surahs.some(s => s.id === surahId));
+    const juzNumber = juzInfo?.juzNumber || 1;
     const totalVersesBefore = surahList.filter(s => s.id < surahId).reduce((sum, s) => sum + s.numberOfAyahs, 0);
     const pageNumber = Math.ceil((totalVersesBefore / 6236) * 604) || 1;
     return { currentJuz: juzNumber, currentHizb: (juzNumber - 1) * 2 + 1, currentPage: pageNumber };
@@ -75,8 +72,51 @@ const KalimaIndex = () => {
     }
   };
 
-  const arabicFontSize           = `${(1.5 * fontSize) / 5}rem`;
-  const translationFontSizeValue = `${(1 * translationFontSize) / 3}rem`;
+  const arabicFontSize = `${(1.5 * fontSize) / 5}rem`;
+
+  // Full surah audio
+  const isThisSurahPlaying = currentSurah === surahId && isAudioPlaying;
+  const handleAudioClick = () => {
+    setShowAudioPlayer(true);
+    if (isThisSurahPlaying) {
+      togglePlayPause();
+    } else if (currentSurah === surahId && !isAudioPlaying) {
+      togglePlayPause();
+    } else {
+      playFullSurah(surahId);
+    }
+  };
+
+  // Word audio
+  const handleWordAudio = () => {
+    if (word && verse) {
+      playWordAudio(verseNum, wordIndex);
+    }
+  };
+  const isWordCurrentlyPlaying = word && verse && isWordPlaying(`word-${verseNum}-${wordIndex}`);
+
+  // Navigation
+  const totalWordsInVerse = verse?.words.length || 0;
+  const hasPrevWord = verse && wordIndex > 0;
+  const hasNextWord = verse && wordIndex < totalWordsInVerse - 1;
+  const hasPrevVerse = verseNum > 1;
+  const hasNextVerse = verses && verseNum < verses.length;
+
+  const getPrevUrl = () => {
+    if (hasPrevWord) return `/Quran/Surah/${surahId}/Ayah/${verseNum}/Kalima/${wordIndex}`; // 1‑based
+    if (hasPrevVerse) {
+      const prevVerse = verses![verseNum - 2];
+      const lastWordIdx = prevVerse.words.length;
+      return `/Quran/Surah/${surahId}/Ayah/${verseNum - 1}/Kalima/${lastWordIdx}`;
+    }
+    return null;
+  };
+
+  const getNextUrl = () => {
+    if (hasNextWord) return `/Quran/Surah/${surahId}/Ayah/${verseNum}/Kalima/${wordIndex + 2}`;
+    if (hasNextVerse) return `/Quran/Surah/${surahId}/Ayah/${verseNum + 1}/Kalima/1`;
+    return null;
+  };
 
   useEffect(() => {
     startSession();
@@ -85,37 +125,13 @@ const KalimaIndex = () => {
         if (activeGoal && minutes > 0) saveMinutesToGoal(activeGoal.id, minutes);
       });
     };
-  }, [surahId]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [surahId]);
 
-  const playWordAudio = async () => {
-    if (!hoverRecitation) return;
-    try {
-      setIsPlaying(true);
-      const audio = new Audio(getWordAudioPath(surahId, verseNum - 1, kalimaNum - 1));
-      audio.onended = () => setIsPlaying(false);
-      audio.onerror = () => setIsPlaying(false);
-      await audio.play();
-    } catch {
-      setIsPlaying(false);
+  useEffect(() => {
+    if (wordRef.current) {
+      setTimeout(() => wordRef.current?.scrollIntoView({ behavior: "smooth", block: "center" }), 300);
     }
-  };
-
-  // Page layout — find which page contains this verse
-  const targetPage = useMemo(() => {
-    if (!verses || !isPageLayout) return null;
-    const startPage     = surah.pages[0];
-    const endPage       = surah.pages[1];
-    const totalPages    = endPage - startPage + 1;
-    const versesPerPage = Math.ceil(verses.length / totalPages);
-
-    for (let i = 0; i < totalPages; i++) {
-      const pageVerses = verses.slice(i * versesPerPage, (i + 1) * versesPerPage);
-      if (pageVerses.some((v) => v.verseNumber === verseNum)) {
-        return { pageNumber: startPage + i, verses: pageVerses };
-      }
-    }
-    return null;
-  }, [verses, surah, verseNum, isPageLayout]);
+  }, [word]);
 
   if (isLoading) {
     return (
@@ -124,8 +140,6 @@ const KalimaIndex = () => {
         <div className="container py-8 max-w-4xl mx-auto pb-24">
           <div className="p-6 border border-border rounded-xl">
             <Skeleton className="h-8 w-full mb-4" />
-            <Skeleton className="h-4 w-3/4 mb-2" />
-            <Skeleton className="h-4 w-1/2" />
           </div>
         </div>
       </Layout>
@@ -142,7 +156,7 @@ const KalimaIndex = () => {
             <AlertDescription>Failed to load word data. Please try again later.</AlertDescription>
           </Alert>
           <div className="text-center">
-            <Button onClick={() => window.location.reload()}>Retry</Button>
+            <Button onClick={() => refetch()}>Retry</Button>
           </div>
         </div>
       </Layout>
@@ -160,165 +174,130 @@ const KalimaIndex = () => {
       />
 
       <div className="container pt-28 max-w-4xl mx-auto pb-24">
-        {surahId !== 1 && surahId !== 9 && showArabicText && (
-          <Bismillah fontClass={getFontClass()} />
-        )}
-
-        <Action
-          surahId={surahId}
-          onInfoClick={() => setSurahInfoDialog(true)}
-        />
-
-        {/* ── Page Layout ── */}
-        {isPageLayout && targetPage && (
-          <div className="relative glass-container !rounded-xl overflow-hidden !block">
-            <div className="p-6 sm:p-8 relative z-10">
-              {showArabicText && (
-                <div
-                  className={`${getFontClass()} leading-[2.8] text-justify`}
-                  dir="rtl"
-                  style={{ fontSize: arabicFontSize, textAlignLast: "center" }}
-                >
-                  {targetPage.verses.map((v) => (
-                    <span key={v.verseNumber} className="inline">
-                      {v.words.map((w, wi) => {
-                        const isTargetVerse = v.verseNumber === verseNum;
-                        const isTargetWord  = isTargetVerse && wi === kalimaNum - 1;
-                        return (
-                          <span
-                            key={wi}
-                            className={cn(
-                              "inline transition-all duration-300",
-                              isTargetWord
-                                ? "text-primary scale-110 inline-block"
-                                : isTargetVerse
-                                  ? "text-foreground"
-                                  : "text-foreground/30"
-                            )}
-                          >
-                            {w}{" "}
-                          </span>
-                        );
-                      })}
-                    </span>
-                  ))}
-                </div>
-              )}
-
-              {/* Translation for target verse only */}
-              {verseTranslation && verse.translation && (
-                <p
-                  className="mt-4 text-muted-foreground leading-relaxed border-t border-border pt-3"
-                  style={{ fontSize: translationFontSizeValue }}
-                >
-                  {verse.translation}
-                </p>
-              )}
-            </div>
-
-            <div className="flex items-center justify-center px-6 py-2 relative z-10">
-              <span className="text-xs text-muted-foreground">{targetPage.pageNumber}</span>
-            </div>
-          </div>
-        )}
-
-        {/* ── Ayah Layout ── */}
-        {!isPageLayout && (
-          <div className="glass-card p-6 space-y-6">
-            {/* Verse with highlighted word */}
-            {showArabicText && (
+        {/* Simple header */}
+        <div className="glass-container !rounded-xl !block w-full mb-6">
+          <div className="p-4 sm:p-5 flex flex-wrap items-center justify-between gap-2">
+            <div className="flex items-baseline gap-2 flex-wrap">
+              <span className="text-sm font-medium text-muted-foreground">
+                {surah.id}:{verse.verseNumber}.{wordIndex + 1}
+              </span>
               <div
-                className={`${getFontClass()} leading-[2.8] text-right flex flex-wrap justify-end gap-1`}
-                dir="rtl"
+                className="font-surah leading-tight"
+                style={{ fontSize: `calc(${arabicFontSize} * 1.2)` }}
               >
-                {verse.words.map((w, wi) => {
-                  const isTarget = wi === kalimaNum - 1;
-                  return (
-                    <TooltipProvider key={wi}>
-                      <Tooltip open={isTarget && !!wbwTranslation}>
-                        <TooltipTrigger asChild>
-                          <button
-                            onClick={isTarget ? playWordAudio : undefined}
-                            className={cn(
-                              "inline transition-all duration-300 relative",
-                              isTarget
-                                ? "text-primary scale-125 cursor-pointer"
-                                : "text-foreground/40 cursor-default"
-                            )}
-                            style={{ fontSize: arabicFontSize }}
-                          >
-                            {w}
-                            {isTarget && isPlaying && (
-                              <span className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />
-                            )}
-                          </button>
-                        </TooltipTrigger>
-                        {wbwTranslation && (
-                          <TooltipContent side="top" className="glass-tooltip">
-                            <p className="text-sm font-medium text-center">{wbwTranslation}</p>
-                          </TooltipContent>
-                        )}
-                      </Tooltip>
-                    </TooltipProvider>
-                  );
-                })}
+                {surah.surahFontName}
               </div>
-            )}
-
-            {/* Word detail card */}
-            <div className="glass-card p-4 space-y-2">
-              <div className="flex items-center justify-between">
-                <span className="text-xs text-muted-foreground">
-                  {surah.id}:{verseNum} — Word {kalimaNum}
-                </span>
-                {hoverRecitation && (
-                  <button
-                    onClick={playWordAudio}
-                    className={cn(
-                      "glass-btn px-3 py-1.5 text-xs gap-1.5",
-                      isPlaying ? "text-primary" : "text-muted-foreground"
-                    )}
-                  >
-                    {isPlaying ? "Playing..." : "Play Word"}
-                  </button>
-                )}
+              <div className="text-sm text-muted-foreground">
+                {surah.englishNameTranslation}
               </div>
-              <p
-                className={`${getFontClass()} text-primary`}
-                dir="rtl"
-                style={{ fontSize: `calc(${arabicFontSize} * 1.5)` }}
-              >
-                {word}
-              </p>
-              {wbwTranslation && (
-                <p className="text-sm text-foreground">{wbwTranslation}</p>
-              )}
             </div>
+            <div className="flex items-center gap-1">
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <button
+                      onClick={() => setSurahInfoDialog(true)}
+                      className="p-2 rounded-lg hover:bg-muted/10 transition-colors"
+                      aria-label="Surah info"
+                    >
+                      <Info className="h-4 w-4" />
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom">{t.quran.surahInfo}</TooltipContent>
+                </Tooltip>
 
-            {/* Full verse translation */}
-            {verseTranslation && verse.translation && (
-              <p
-                className="text-muted-foreground leading-relaxed border-t border-border pt-4"
-                style={{ fontSize: translationFontSizeValue }}
-              >
-                {verse.translation}
-              </p>
-            )}
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <button
+                      className="p-2 rounded-lg hover:bg-muted/10 transition-colors disabled:opacity-50"
+                      disabled={isAudioLoading}
+                      onClick={handleAudioClick}
+                      aria-label={isThisSurahPlaying ? "Pause" : "Play surah"}
+                    >
+                      {isAudioLoading ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : isThisSurahPlaying ? (
+                        <Pause className="h-4 w-4" />
+                      ) : (
+                        <Play className="h-4 w-4" />
+                      )}
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom">
+                    {isThisSurahPlaying ? t.quran.pauseAudio : t.quran.playAudio}
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            </div>
           </div>
-        )}
+        </div>
 
-        <SurahNavigation currentSurahId={surahId} />
+        {/* Word card */}
+        <div className="glass-container !rounded-xl !block w-full">
+          <div className="p-12 text-center">
+            <span
+              ref={wordRef}
+              className={cn(
+                "inline-block transition-all duration-200 select-text cursor-pointer",
+                getFontClass(),
+                isWordCurrentlyPlaying && "text-primary animate-pulse",
+                "hover:text-primary"
+              )}
+              style={{
+                fontSize: `calc(${arabicFontSize} * 1.8)`,
+              }}
+              onClick={handleWordAudio}
+            >
+              {word}
+            </span>
+          </div>
+        </div>
+
+        {/* Navigation */}
+        <div className="flex items-center justify-between gap-4 mt-6">
+          {getPrevUrl() ? (
+            <a
+              href={getPrevUrl()!}
+              className="glass-btn px-4 py-2 text-sm flex items-center gap-2"
+            >
+              <ChevronLeft className="h-4 w-4" />
+              Previous
+            </a>
+          ) : (
+            <div className="w-24" />
+          )}
+          <div className="flex-1" />
+          {getNextUrl() ? (
+            <a
+              href={getNextUrl()!}
+              className="glass-btn px-4 py-2 text-sm flex items-center gap-2"
+            >
+              Next
+              <ChevronRight className="h-4 w-4" />
+            </a>
+          ) : (
+            <div className="w-24" />
+          )}
+        </div>
+
+        <SurahNavigation
+          currentSurahId={surahId}
+          totalVerses={surah.numberOfAyahs}
+        />
       </div>
 
       <AudioPlayer
         isVisible={showAudioPlayer}
         onClose={() => { stopAudio(); setShowAudioPlayer(false); }}
+        surahId={surahId}
+        surahName={surah.englishName}
       />
 
       <NotesDialog
         open={notesDialog.open}
         onOpenChange={(open) => setNotesDialog({ ...notesDialog, open })}
         surahId={surahId}
+        surahName={surah.englishName}
         ayahId={notesDialog.ayahId}
         verseText={notesDialog.verseText}
       />
@@ -326,6 +305,7 @@ const KalimaIndex = () => {
         open={shareDialog.open}
         onOpenChange={(open) => setShareDialog({ ...shareDialog, open })}
         surahId={surahId}
+        surahName={surah.englishName}
         ayahId={shareDialog.ayahId}
         verseText={shareDialog.verseText}
         translation={shareDialog.translation}
@@ -334,6 +314,7 @@ const KalimaIndex = () => {
         open={surahInfoDialog}
         onOpenChange={setSurahInfoDialog}
         surahId={surahId}
+        surah={surah}
       />
     </Layout>
   );

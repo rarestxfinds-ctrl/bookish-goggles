@@ -1,3 +1,10 @@
+import ayahs from "@/Bottom/Data/Quran/Meta/Ayahs.json";
+import names from "@/Bottom/Data/Quran/Meta/Names.json";
+import pageMap from "@/Bottom/Data/Quran/Meta/PageMap.json";
+import juzArray from "@/Bottom/Data/Quran/Meta/Juz.json";
+import place from "@/Bottom/Data/Quran/Meta/Revelation/Place.json";
+import order from "@/Bottom/Data/Quran/Meta/Revelation/Order.json";
+
 export type QuranFontType = "Standard" | "V1" | "V2";
 
 export interface SurahData {
@@ -10,11 +17,7 @@ export interface TranslationData {
   Ayah: { Kalima: string[] }[];
 }
 
-export interface SurahLayout {
-  Standard?: string[][];
-  V1?: string[][];
-  V2?: string[][];
-}
+export type SurahLayout = string[][];
 
 export interface AssembledVerse {
   verseNumber: number;
@@ -40,80 +43,161 @@ export interface SurahMeta {
   revelationType: "Meccan" | "Medinan";
   revelationOrder: number;
   pages: [number, number];
+  juz: number;
 }
 
 export interface JuzInfo {
   juzNumber: number;
-  surahs: { id: number; startVerse?: number; endVerse?: number }[];
+  surahs: { id: number }[];
+}
+
+export interface PageSegment {
+  surah: number;
+  startVerse: number;
+  startWord: number;
+  endVerse: number;
+  endWord: number;
 }
 
 export type TranslationSource = string;
 
-// ============= Static Metadata =============
+// ============= Build surahList =============
+export const surahList: SurahMeta[] = (Array.isArray(ayahs) ? ayahs : []).map((ayahCount, idx) => {
+  const id = idx + 1;
+  const englishNameTranslation = Array.isArray(names) && names[id - 1] ? names[id - 1] : "";
+  const fontName = id.toString().padStart(3, '0');
+  const startPage = 1;
+  const endPage = 604;
+  const revelationType = Array.isArray(place) && place[id - 1] ? (place[id - 1] as "Meccan" | "Medinan") : "Meccan";
+  const revelationOrder = Array.isArray(order) && order[id - 1] ? order[id - 1] : id;
+  const juz = Array.isArray(juzArray) && juzArray[id - 1] ? juzArray[id - 1] : 1;
 
-export const surahList: SurahMeta[] = [
-  { id: 1,   name: "الفاتحة",   surahFontName: "001", englishName: "Al-Fatihah",   englishNameTranslation: "The Opener",     numberOfAyahs: 7,  revelationType: "Meccan",  revelationOrder: 5,   pages: [1, 1] },
-  { id: 112, name: "الإخلاص",   surahFontName: "112", englishName: "Al-Ikhlas",    englishNameTranslation: "The Sincerity",  numberOfAyahs: 4,  revelationType: "Meccan",  revelationOrder: 22,  pages: [604, 604] },
-  { id: 113, name: "الفلق",     surahFontName: "113", englishName: "Al-Falaq",     englishNameTranslation: "The Daybreak",   numberOfAyahs: 5,  revelationType: "Meccan",  revelationOrder: 20,  pages: [604, 604] },
-  { id: 114, name: "الناس",     surahFontName: "114", englishName: "An-Nas",       englishNameTranslation: "Mankind",        numberOfAyahs: 6,  revelationType: "Meccan",  revelationOrder: 21,  pages: [604, 604] },
-];
+  const arabicName = "";
+  return {
+    id,
+    name: arabicName,
+    surahFontName: fontName,
+    englishName: "",
+    englishNameTranslation,
+    numberOfAyahs: ayahCount,
+    revelationType,
+    revelationOrder,
+    pages: [startPage, endPage],
+    juz,
+  };
+});
 
-export const juzData: JuzInfo[] = [
-  { juzNumber: 1,  surahs: [{ id: 1 }, { id: 2, startVerse: 1, endVerse: 141 }] },
-  { juzNumber: 30, surahs: [{ id: 110 }, { id: 111 }, { id: 112 }, { id: 113 }, { id: 114 }] },
-];
+// ============= Page Map Parser =============
+export function getPageSegments(pageNumber: number): PageSegment[] | null {
+  if (!pageMap || !Array.isArray(pageMap)) {
+    console.error("Page map not loaded properly");
+    return null;
+  }
 
-export const revelationOrder: number[] = [
-  96, 68, 73, 74, 1, 111, 81, 87, 92, 89, 93, 94, 103, 100, 108, 102, 107, 109, 105, 113,
-  114, 112, 53, 80, 97, 91, 85, 95, 106, 101, 75, 104, 77, 50, 90, 86, 54, 38, 7, 72,
-  36, 25, 35, 19, 20, 56, 26, 27, 28, 17, 10, 11, 12, 15, 6, 37, 31, 34, 39, 40,
-  41, 42, 43, 44, 45, 46, 51, 88, 18, 16, 71, 14, 21, 23, 32, 52, 67, 69, 70, 78,
-  79, 82, 84, 30, 29, 83, 2, 8, 3, 33, 60, 4, 99, 57, 47, 13, 55, 76, 65, 98,
-  59, 24, 22, 63, 58, 49, 66, 64, 61, 62, 48, 5, 9, 110,
-];
+  if (pageNumber < 1 || pageNumber > pageMap.length) {
+    console.warn(`Page ${pageNumber} not found. Total pages: ${pageMap.length}`);
+    return null;
+  }
+  
+  const pageData = pageMap[pageNumber - 1];
+  if (!pageData) {
+    console.warn(`No data for page ${pageNumber}`);
+    return null;
+  }
+  
+  const segments = pageData.split('|');
+  
+  const result: PageSegment[] = [];
+  
+  for (const segment of segments) {
+    const [start, end] = segment.split('-');
+    
+    if (!start || !end) {
+      console.error(`Invalid segment format: ${segment}`);
+      continue;
+    }
+    
+    const startParts = start.split('.');
+    if (startParts.length !== 2) {
+      console.error(`Invalid start format: ${start}`);
+      continue;
+    }
+    
+    const [startSurahVerse, startWord] = startParts;
+    const [startSurah, startVerse] = startSurahVerse.split(':');
+    
+    const endParts = end.split('.');
+    if (endParts.length !== 2) {
+      console.error(`Invalid end format: ${end}`);
+      continue;
+    }
+    
+    const [endSurahVerse, endWord] = endParts;
+    const [endSurah, endVerse] = endSurahVerse.split(':');
+    
+    result.push({
+      surah: parseInt(startSurah),
+      startVerse: parseInt(startVerse),
+      startWord: parseInt(startWord),
+      endVerse: parseInt(endVerse),
+      endWord: parseInt(endWord),
+    });
+  }
+  
+  return result.length > 0 ? result : null;
+}
+
+// ============= Build juzData from Juz.json =============
+const juzStartMap: number[] = Array.isArray(juzArray) ? juzArray : [];
+const juzGroups: { [key: number]: number[] } = {};
+for (let i = 0; i < juzStartMap.length; i++) {
+  const juz = juzStartMap[i];
+  if (!juzGroups[juz]) juzGroups[juz] = [];
+  juzGroups[juz].push(i + 1);
+}
+export const juzData: JuzInfo[] = Object.entries(juzGroups).map(([juz, surahIds]) => ({
+  juzNumber: parseInt(juz),
+  surahs: surahIds.map(id => ({ id })),
+}));
+
+// ============= Revelation order array (for backward compatibility) =============
+export const revelationOrder: number[] = Array.isArray(order) ? order : [];
 
 // ============= Cache =============
-
 const cache = {
   surah:       new Map<string, SurahData>(),
   translation: new Map<string, TranslationData>(),
   layout:      new Map<number, SurahLayout | null>(),
+  timestamps:  new Map<string, string[][] | string[] | null>(),
 };
 
-// ============= Glob Audio Modules =============
-// @ resolves to ./Layer per vite.config.ts, so glob patterns use @ alias.
-// The runtime lookup keys must match the resolved pattern exactly —
-// Vite expands @ to the absolute path when building the glob map, so we
-// reconstruct the same key using import.meta.glob on the same alias.
-
+// ============= Glob Modules =============
 const surahAudioModules = import.meta.glob(
   '@/Bottom/Data/Quran/Qiraat/*/Surah/*/Audio.mp3',
   { query: '?url', import: 'default', eager: false }
 );
-
 const pageAudioModules = import.meta.glob(
   '@/Bottom/Data/Quran/Qiraat/*/Page/*/Audio.mp3',
   { query: '?url', import: 'default', eager: false }
 );
-
 const ayahAudioModules = import.meta.glob(
   '@/Bottom/Data/Quran/Qiraat/*/Surah/*/Ayah/*/Audio.mp3',
   { query: '?url', import: 'default', eager: false }
 );
-
 const wordAudioModules = import.meta.glob(
   '@/Bottom/Data/Quran/Qiraat/Tafsir_Center/Surah/*/Ayah/*/Kalima/*/Audio.mp3',
   { query: '?url', import: 'default', eager: false }
 );
+const surahTimestampModules = import.meta.glob(
+  '@/Bottom/Data/Quran/Qiraat/*/Surah/*/Timestamp.json',
+  { import: 'default', eager: false }
+);
+const ayahTimestampModules = import.meta.glob(
+  '@/Bottom/Data/Quran/Qiraat/*/Surah/*/Ayah/*/Timestamp.json',
+  { import: 'default', eager: false }
+);
 
 // ============= Audio key helper =============
-// Vite resolves the @ alias to an absolute path when it builds the glob map.
-// We need to match that exact key format at runtime.
-// import.meta.glob keys always use the resolved absolute path, e.g.:
-//   /absolute/path/to/Layer/Bottom/Data/Quran/Qiraat/...
-// We derive the base by stripping the known suffix from any existing key,
-// then use that base to construct lookup keys dynamically.
-
 function resolveGlobBase(
   modules: Record<string, unknown>,
   marker: string,
@@ -124,13 +208,14 @@ function resolveGlobBase(
   return idx !== -1 ? anyKey.slice(0, idx) : "";
 }
 
-const surahAudioBase  = resolveGlobBase(surahAudioModules,  "/Bottom/Data/Quran/Qiraat/");
-const pageAudioBase   = resolveGlobBase(pageAudioModules,   "/Bottom/Data/Quran/Qiraat/");
-const ayahAudioBase   = resolveGlobBase(ayahAudioModules,   "/Bottom/Data/Quran/Qiraat/");
-const wordAudioBase   = resolveGlobBase(wordAudioModules,   "/Bottom/Data/Quran/Qiraat/");
+const surahAudioBase = resolveGlobBase(surahAudioModules, "/Bottom/Data/Quran/Qiraat/");
+const pageAudioBase = resolveGlobBase(pageAudioModules, "/Bottom/Data/Quran/Qiraat/");
+const ayahAudioBase = resolveGlobBase(ayahAudioModules, "/Bottom/Data/Quran/Qiraat/");
+const wordAudioBase = resolveGlobBase(wordAudioModules, "/Bottom/Data/Quran/Qiraat/");
+const surahTimestampBase = resolveGlobBase(surahTimestampModules, "/Bottom/Data/Quran/Qiraat/");
+const ayahTimestampBase = resolveGlobBase(ayahTimestampModules, "/Bottom/Data/Quran/Qiraat/");
 
 // ============= Loaders =============
-
 async function loadSurah(surahId: number, fontType: QuranFontType = "Standard"): Promise<SurahData> {
   const key = `${fontType}-${surahId}`;
   if (cache.surah.has(key)) return cache.surah.get(key)!;
@@ -168,7 +253,8 @@ async function loadLayout(surahId: number): Promise<SurahLayout | null> {
   if (cache.layout.has(surahId)) return cache.layout.get(surahId)!;
   try {
     const module = await import(`@/Bottom/Data/Quran/Surah/Layout/${surahId}.json`);
-    const data: SurahLayout = module.default ?? module;
+    const raw = module.default ?? module;
+    const data: SurahLayout = Array.isArray(raw) ? raw : null;
     cache.layout.set(surahId, data);
     return data;
   } catch {
@@ -178,7 +264,6 @@ async function loadLayout(surahId: number): Promise<SurahLayout | null> {
 }
 
 // ============= Audio =============
-
 export async function getSurahAudioUrl(surahId: number, reciter: string): Promise<string | null> {
   const key = `${surahAudioBase}/Bottom/Data/Quran/Qiraat/${reciter}/Surah/${surahId}/Audio.mp3`;
   const mod = surahAudioModules[key];
@@ -207,8 +292,46 @@ export async function getWordAudioUrl(surahId: number, ayahNumber: number, kalim
   return (await (mod as () => Promise<string>)());
 }
 
-// ============= Main API =============
+// ============= Timestamp Loaders =============
+export async function getSurahTimestamps(surahId: number, reciter: string): Promise<string[][] | null> {
+  const cacheKey = `${reciter}-surah-${surahId}`;
+  if (cache.timestamps.has(cacheKey)) return cache.timestamps.get(cacheKey) as string[][] | null;
+  try {
+    const key = `${surahTimestampBase}/Bottom/Data/Quran/Qiraat/${reciter}/Surah/${surahId}/Timestamp.json`;
+    const mod = surahTimestampModules[key];
+    if (!mod) {
+      cache.timestamps.set(cacheKey, null);
+      return null;
+    }
+    const data = (await (mod as () => Promise<string[][]>))() as string[][];
+    cache.timestamps.set(cacheKey, data);
+    return data;
+  } catch {
+    cache.timestamps.set(cacheKey, null);
+    return null;
+  }
+}
 
+export async function getAyahTimestamps(surahId: number, ayahNumber: number, reciter: string): Promise<string[] | null> {
+  const cacheKey = `${reciter}-surah-${surahId}-ayah-${ayahNumber}`;
+  if (cache.timestamps.has(cacheKey)) return cache.timestamps.get(cacheKey) as string[] | null;
+  try {
+    const key = `${ayahTimestampBase}/Bottom/Data/Quran/Qiraat/${reciter}/Surah/${surahId}/Ayah/${ayahNumber}/Timestamp.json`;
+    const mod = ayahTimestampModules[key];
+    if (!mod) {
+      cache.timestamps.set(cacheKey, null);
+      return null;
+    }
+    const data = (await (mod as () => Promise<string[]>))() as string[];
+    cache.timestamps.set(cacheKey, data);
+    return data;
+  } catch {
+    cache.timestamps.set(cacheKey, null);
+    return null;
+  }
+}
+
+// ============= Main API =============
 export async function getSurah(
   surahId: number,
   options: {
@@ -232,15 +355,13 @@ export async function getSurah(
     return {
       verseNumber: index + 1,
       arabic,
-      words: arabic.split(" "),
+      words: fontType === "V1" ? arabic.split("") : arabic.split(" "),
       ...(kalima && options.translation && { translation: kalima.join(" ") }),
       ...(kalima && options.wbw && { wbwTranslation: kalima }),
     };
   });
 
-  const lines = layoutData?.[fontType] ?? undefined;
-
-  return { id: surahId, verses, lines };
+  return { id: surahId, verses, lines: layoutData ?? undefined };
 }
 
 export async function getVerse(

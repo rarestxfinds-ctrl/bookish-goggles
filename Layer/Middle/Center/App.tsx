@@ -15,12 +15,11 @@ import Index from "@/Top/Page/Index";
 // Quran
 const Quran        = lazy(() => import("@/Top/Page/Quran/Index"));
 const SurahIndex   = lazy(() => import("@/Top/Page/Quran/Surah/Index"));
-const SurahInfo    = lazy(() => import("@/Top/Page/Quran/Surah/Info"));
 const AyahIndex    = lazy(() => import("@/Top/Page/Quran/Surah/Ayah/Index"));
 const KalimaIndex  = lazy(() => import("@/Top/Page/Quran/Surah/Ayah/Kalima/Index"));
-const QuranGoals   = lazy(() => import("@/Top/Page/Quran/Goals"));
+const QuranGoals   = lazy(() => import("@/Top/Component/Quran/Goals"));
 const JuzPage      = lazy(() => import("@/Top/Page/Juz-Page"));
-const QuranPage    = lazy(() => import("@/Top/Page/Quran/Page"));
+const QuranPage    = lazy(() => import("@/Top/Page/Quran/Index"));
 
 // Hadith
 const Hadiths          = lazy(() => import("@/Top/Page/Hadith/List"));
@@ -89,7 +88,6 @@ const App = () => (
                     {/* ── Quran ── */}
                     <Route path="/Quran"                                                      element={<Quran />} />
                     <Route path="/Quran/Surah/:id"                                            element={<SurahIndex />} />
-                    <Route path="/Quran/Surah/:id/Info"                                       element={<SurahInfo />} />
                     <Route path="/Quran/Surah/:id/Ayah/:verseId"                              element={<AyahIndex />} />
                     <Route path="/Quran/Surah/:id/Ayah/:verseId/Kalima/:kalimaId"             element={<KalimaIndex />} />
                     <Route path="/Quran/Juz/:id"                                              element={<JuzPage />} />

@@ -1,6 +1,7 @@
-import { useState, useCallback, memo, useMemo, useRef } from "react";
+import { useState, useCallback, useMemo, useRef } from "react";
 import { createPortal } from "react-dom";
 import { useApp } from "@/Middle/Context/App-Context";
+import { useAudio } from "@/Middle/Context/Audio-Context";
 import { getWordAudioUrl, getAyahAudioUrl } from "@/Bottom/API/Quran";
 
 const VERSE_INDICATOR_RE = /^[\u0660-\u0669\u06F0-\u06F9\u06DD۝\s]+$/;
@@ -67,7 +68,7 @@ function WordTooltip({ translation, enabled, children }: WordTooltipProps) {
   );
 }
 
-export const WordByWord = memo(function WordByWord({
+export function WordByWord({
   verses,
   surahId,
   align = "right",
@@ -83,6 +84,13 @@ export const WordByWord = memo(function WordByWord({
     quranFont,
     selectedReciter,
   } = useApp();
+
+  const { activeVerse, activeWord } = useAudio();
+
+  // Safety check: if verses is undefined or not an array, return null
+  if (!verses || !Array.isArray(verses) || verses.length === 0) {
+    return null;
+  }
 
   const computedFontSize = useMemo(() => `${(1.5 * fontSize) / 5}rem`, [fontSize]);
   const fontSizeValue = fontSizeOverride ?? computedFontSize;
@@ -152,6 +160,7 @@ export const WordByWord = memo(function WordByWord({
                 const key       = `${verse.verseNumber}-${index}`;
                 const transl    = translations[index];
                 const isPlaying = playingKey === key;
+                const isActive  = verse.verseNumber === activeVerse && index === activeWord;
 
                 return (
                   <div key={key} className="flex flex-col items-center">
@@ -160,7 +169,11 @@ export const WordByWord = memo(function WordByWord({
                         className={`
                           transition-colors duration-200 relative select-text
                           ${resolvedFontClass}
-                          ${isPlaying ? "text-primary" : "text-foreground hover:text-primary"}
+                          ${isActive
+                            ? "text-emerald-500 animate-pulse"
+                            : isPlaying
+                              ? "text-primary animate-pulse"
+                              : "text-foreground hover:text-primary"}
                         `}
                         style={{
                           fontSize: fontSizeValue,
@@ -169,9 +182,6 @@ export const WordByWord = memo(function WordByWord({
                         onClick={() => playWordAudio(verse.verseNumber, index)}
                       >
                         {arabic}
-                        {isPlaying && (
-                          <span className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />
-                        )}
                       </span>
                     </WordTooltip>
                     {transl && (
@@ -205,13 +215,18 @@ export const WordByWord = memo(function WordByWord({
           const key       = `${verse.verseNumber}-${index}`;
           const transl    = translations[index];
           const isPlaying = playingKey === key;
+          const isActive  = verse.verseNumber === activeVerse && index === activeWord;
 
           return (
             <WordTooltip key={key} translation={transl} enabled={hoverTranslation}>
               <span
                 className={`
                   inline select-text transition-colors duration-200
-                  ${isPlaying ? "text-primary" : "text-foreground hover:text-primary"}
+                  ${isActive
+                    ? "text-emerald-500 animate-pulse"
+                    : isPlaying
+                      ? "text-primary animate-pulse"
+                      : "text-foreground hover:text-primary"}
                 `}
                 style={{
                   cursor: hoverTranslation || hoverRecitation ? "pointer" : "text",
@@ -219,9 +234,6 @@ export const WordByWord = memo(function WordByWord({
                 onClick={() => playWordAudio(verse.verseNumber, index)}
               >
                 {arabic}{' '}
-                {isPlaying && (
-                  <span className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />
-                )}
               </span>
             </WordTooltip>
           );
@@ -229,4 +241,4 @@ export const WordByWord = memo(function WordByWord({
       })}
     </div>
   );
-});
+}

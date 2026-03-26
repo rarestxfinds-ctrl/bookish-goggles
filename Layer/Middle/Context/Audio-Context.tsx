@@ -1,26 +1,36 @@
 import { createContext, useContext, useState, useRef, useCallback, ReactNode, useEffect, useMemo } from 'react';
-import { getSurahAudioUrl, getPageAudioUrl } from "@/Bottom/API/Quran";
+import { 
+  getSurahAudioUrl, 
+  getPageAudioUrl, 
+  getAyahAudioUrl,
+  getSurahTimestamps,
+  getAyahTimestamps
+} from "@/Bottom/API/Quran";
 import { useApp } from "@/Middle/Context/App-Context";
 
-type PlaybackMode = 'surah' | 'page';
+type PlaybackMode = 'surah' | 'page' | 'ayah';
 
 interface AudioContextType {
   isPlaying: boolean;
   isLoading: boolean;
   currentSurah: number | null;
   currentPage: number | null;
+  currentAyah: { surahId: number; ayahNumber: number } | null;
   currentTime: number;
   duration: number;
   progress: number;
   playbackMode: PlaybackMode;
+  activeVerse: number | null;
+  activeWord: number | null;
   playFullSurah: (surahNumber: number) => void;
   playPage: (pageNumber: number) => void;
+  playAyah: (surahId: number, ayahNumber: number) => void;
   togglePlayPause: () => void;
   stop: () => void;
   seekTo: (progress: number) => void;
   setVolume: (volume: number) => void;
-  repeatMode: 'none' | 'surah' | 'page';
-  setRepeatMode: (mode: 'none' | 'surah' | 'page') => void;
+  repeatMode: 'none' | 'surah' | 'page' | 'ayah';
+  setRepeatMode: (mode: 'none' | 'surah' | 'page' | 'ayah') => void;
   playbackSpeed: number;
   setPlaybackSpeed: (speed: number) => void;
 }
@@ -34,16 +44,67 @@ export function AudioProvider({ children }: { children: ReactNode }) {
   const [isLoading, setIsLoading] = useState(false);
   const [currentSurah, setCurrentSurah] = useState<number | null>(null);
   const [currentPage, setCurrentPage] = useState<number | null>(null);
+  const [currentAyah, setCurrentAyah] = useState<{ surahId: number; ayahNumber: number } | null>(null);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [progress, setProgress] = useState(0);
-  const [repeatMode, setRepeatMode] = useState<'none' | 'surah' | 'page'>('none');
+  const [repeatMode, setRepeatMode] = useState<'none' | 'surah' | 'page' | 'ayah'>('none');
   const [playbackSpeed, setPlaybackSpeed] = useState(1);
   const [playbackMode, setPlaybackMode] = useState<PlaybackMode>('surah');
+  const [activeVerse, setActiveVerse] = useState<number | null>(null);
+  const [activeWord, setActiveWord] = useState<number | null>(null);
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const playbackModeRef = useRef<PlaybackMode>('surah');
+  const timestampsRef = useRef<Array<{ verse: number; word: number; start: number; end: number }> | null>(null);
+  const ayahTimestampsRef = useRef<string[] | null>(null);
 
+  // ── Load timestamps for surah/page mode ─────────────────────────────────────
+  useEffect(() => {
+    if (!currentSurah) {
+      timestampsRef.current = null;
+      setActiveVerse(null);
+      setActiveWord(null);
+      return;
+    }
+    
+    getSurahTimestamps(currentSurah, selectedReciter).then((data) => {
+      if (data) {
+        const flatTimestamps: Array<{ verse: number; word: number; start: number; end: number }> = [];
+        for (let v = 0; v < data.length; v++) {
+          const words = data[v];
+          for (let w = 0; w < words.length; w++) {
+            const [start, end] = words[w].split("-").map(Number);
+            flatTimestamps.push({
+              verse: v + 1,
+              word: w,
+              start: start,
+              end: end
+            });
+          }
+        }
+        timestampsRef.current = flatTimestamps;
+      } else {
+        timestampsRef.current = null;
+      }
+    });
+  }, [currentSurah, selectedReciter]);
+
+  // ── Load ayah timestamps when ayah changes (used for seeking, not for initial play) ──
+  useEffect(() => {
+    if (!currentAyah) {
+      ayahTimestampsRef.current = null;
+      return;
+    }
+    // Only load if not already set (to avoid double load after playAyah)
+    if (!ayahTimestampsRef.current) {
+      getAyahTimestamps(currentAyah.surahId, currentAyah.ayahNumber, selectedReciter).then((data) => {
+        ayahTimestampsRef.current = data;
+      });
+    }
+  }, [currentAyah, selectedReciter]);
+
+  // ── Main audio element setup ────────────────────────────────────────────────
   useEffect(() => {
     audioRef.current = new Audio();
     audioRef.current.preload = 'auto';
@@ -51,9 +112,47 @@ export function AudioProvider({ children }: { children: ReactNode }) {
     const audio = audioRef.current;
 
     const handleTimeUpdate = () => {
-      setCurrentTime(audio.currentTime);
+      const ct = audio.currentTime;
+      setCurrentTime(ct);
       if (audio.duration) {
-        setProgress((audio.currentTime / audio.duration) * 100);
+        setProgress((ct / audio.duration) * 100);
+      }
+
+      if (playbackMode === 'surah' || playbackMode === 'page') {
+        const ts = timestampsRef.current;
+        if (ts && ts.length > 0) {
+          const ms = ct * 1000;
+          let foundVerse = null;
+          let foundWord = null;
+          for (let i = 0; i < ts.length; i++) {
+            const item = ts[i];
+            if (ms >= item.start && ms < item.end) {
+              foundVerse = item.verse;
+              foundWord = item.word;
+              break;
+            }
+          }
+          setActiveVerse(foundVerse);
+          setActiveWord(foundWord);
+        }
+      } else if (playbackMode === 'ayah') {
+        const ts = ayahTimestampsRef.current;
+        if (ts && ts.length > 0) {
+          const ms = ct * 1000;
+          let foundWord = null;
+          for (let i = 0; i < ts.length; i++) {
+            const [start, end] = ts[i].split("-").map(Number);
+            if (ms >= start && ms < end) {
+              foundWord = i;
+              break;
+            }
+          }
+          setActiveVerse(currentAyah?.ayahNumber ?? null);
+          setActiveWord(foundWord);
+        }
+      } else {
+        setActiveVerse(null);
+        setActiveWord(null);
       }
     };
 
@@ -78,43 +177,14 @@ export function AudioProvider({ children }: { children: ReactNode }) {
       audio.pause();
       audio.src = '';
     };
-  }, []);
-
-  useEffect(() => {
-    if (audioRef.current) {
-      audioRef.current.playbackRate = playbackSpeed;
-    }
-  }, [playbackSpeed]);
-
-  const handleAudioEnded = useCallback(() => {
-    const audio = audioRef.current;
-    if (!audio) return;
-
-    const shouldRepeat =
-      (playbackModeRef.current === 'surah' && repeatMode === 'surah') ||
-      (playbackModeRef.current === 'page'  && repeatMode === 'page');
-
-    if (shouldRepeat) {
-      audio.currentTime = 0;
-      audio.play();
-    } else {
-      setIsPlaying(false);
-      setProgress(0);
-      setCurrentTime(0);
-    }
-  }, [repeatMode]);
-
-  useEffect(() => {
-    const audio = audioRef.current;
-    if (!audio) return;
-    audio.addEventListener('ended', handleAudioEnded);
-    return () => audio.removeEventListener('ended', handleAudioEnded);
-  }, [handleAudioEnded]);
+  }, [playbackMode, currentAyah]);
 
   const loadAndPlay = useCallback(async (src: string) => {
     const audio = audioRef.current;
     if (!audio) return;
     setIsLoading(true);
+    setActiveVerse(null);
+    setActiveWord(null);
     audio.src = src;
     audio.playbackRate = playbackSpeed;
     try {
@@ -126,10 +196,40 @@ export function AudioProvider({ children }: { children: ReactNode }) {
     }
   }, [playbackSpeed]);
 
+  const handleAudioEnded = useCallback(() => {
+    const audio = audioRef.current;
+    if (!audio) return;
+
+    const shouldRepeat =
+      (playbackModeRef.current === 'surah' && repeatMode === 'surah') ||
+      (playbackModeRef.current === 'page' && repeatMode === 'page') ||
+      (playbackModeRef.current === 'ayah' && repeatMode === 'ayah');
+
+    if (shouldRepeat) {
+      audio.currentTime = 0;
+      audio.play();
+    } else {
+      setIsPlaying(false);
+      setProgress(0);
+      setCurrentTime(0);
+      setActiveVerse(null);
+      setActiveWord(null);
+    }
+  }, [repeatMode]);
+
+  useEffect(() => {
+    const audio = audioRef.current;
+    if (!audio) return;
+    audio.addEventListener('ended', handleAudioEnded);
+    return () => audio.removeEventListener('ended', handleAudioEnded);
+  }, [handleAudioEnded]);
+
+  // ── Play Full Surah ─────────────────────────────────────────────────────────
   const playFullSurah = useCallback(async (surahNumber: number) => {
     playbackModeRef.current = 'surah';
     setPlaybackMode('surah');
     setCurrentPage(null);
+    setCurrentAyah(null);
     setCurrentSurah(surahNumber);
     const url = await getSurahAudioUrl(surahNumber, selectedReciter);
     if (url) {
@@ -140,16 +240,43 @@ export function AudioProvider({ children }: { children: ReactNode }) {
     }
   }, [loadAndPlay, selectedReciter]);
 
+  // ── Play Page ───────────────────────────────────────────────────────────────
   const playPage = useCallback(async (pageNumber: number) => {
     playbackModeRef.current = 'page';
     setPlaybackMode('page');
     setCurrentSurah(null);
+    setCurrentAyah(null);
     setCurrentPage(pageNumber);
     const url = await getPageAudioUrl(pageNumber, selectedReciter);
     if (url) {
       loadAndPlay(url);
     } else {
       console.error(`No audio found for page ${pageNumber} reciter ${selectedReciter}`);
+      setIsLoading(false);
+    }
+  }, [loadAndPlay, selectedReciter]);
+
+  // ── Play Ayah – load timestamps FIRST, then play ────────────────────────────
+  const playAyah = useCallback(async (surahId: number, ayahNumber: number) => {
+    // Load ayah timestamps before starting playback
+    const timestamps = await getAyahTimestamps(surahId, ayahNumber, selectedReciter);
+    if (timestamps) {
+      ayahTimestampsRef.current = timestamps;
+    } else {
+      ayahTimestampsRef.current = null;
+    }
+
+    playbackModeRef.current = 'ayah';
+    setPlaybackMode('ayah');
+    setCurrentSurah(null);
+    setCurrentPage(null);
+    setCurrentAyah({ surahId, ayahNumber });
+
+    const url = await getAyahAudioUrl(surahId, ayahNumber, selectedReciter);
+    if (url) {
+      loadAndPlay(url);
+    } else {
+      console.error(`No audio found for ayah ${surahId}:${ayahNumber} reciter ${selectedReciter}`);
       setIsLoading(false);
     }
   }, [loadAndPlay, selectedReciter]);
@@ -176,9 +303,14 @@ export function AudioProvider({ children }: { children: ReactNode }) {
     setIsPlaying(false);
     setCurrentSurah(null);
     setCurrentPage(null);
+    setCurrentAyah(null);
     setProgress(0);
     setCurrentTime(0);
     setDuration(0);
+    setActiveVerse(null);
+    setActiveWord(null);
+    timestampsRef.current = null;
+    ayahTimestampsRef.current = null;
   }, []);
 
   const seekTo = useCallback((newProgress: number) => {
@@ -195,17 +327,27 @@ export function AudioProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
+  useEffect(() => {
+    if (audioRef.current) {
+      audioRef.current.playbackRate = playbackSpeed;
+    }
+  }, [playbackSpeed]);
+
   const contextValue = useMemo(() => ({
     isPlaying,
     isLoading,
     currentSurah,
     currentPage,
+    currentAyah,
     currentTime,
     duration,
     progress,
     playbackMode,
+    activeVerse,
+    activeWord,
     playFullSurah,
     playPage,
+    playAyah,
     togglePlayPause,
     stop,
     seekTo,
@@ -215,9 +357,10 @@ export function AudioProvider({ children }: { children: ReactNode }) {
     playbackSpeed,
     setPlaybackSpeed,
   }), [
-    isPlaying, isLoading, currentSurah, currentPage,
+    isPlaying, isLoading, currentSurah, currentPage, currentAyah,
     currentTime, duration, progress, playbackMode,
-    playFullSurah, playPage, togglePlayPause, stop,
+    activeVerse, activeWord,
+    playFullSurah, playPage, playAyah, togglePlayPause, stop,
     seekTo, setVolume, repeatMode, playbackSpeed,
   ]);
 
